@@ -22,12 +22,14 @@ app.register(async (app) => {
 	app.get('/connect/:roomId', { websocket: true }, async (socket, req) => {
 		// The roomId comes from the URL pathname
 		const roomId = (req.params as any).roomId as string
+		let readonly = false
 		if (idPattern.test(roomId)) {
 			const user = resolveSession(req.headers.cookie)
-			if (!user || !['owner', 'editor'].includes(boardAccess(user.id, roomId) || '')) {
+			if (!user || !boardAccess(user.id, roomId)) {
 				socket.close(1008, 'Board access denied')
 				return
 			}
+			readonly = boardAccess(user.id, roomId) === 'viewer'
 		}
 		// The sessionId is passed from the client as a query param,
 		// you need to extract it and pass it to the room.
@@ -49,7 +51,7 @@ app.register(async (app) => {
 		// Here we make or get an existing instance of TLSocketRoom for the given roomId
 		const room = makeOrLoadRoom(roomId)
 		// and finally connect the socket to the room
-		room.handleSocketConnect({ sessionId, socket })
+		room.handleSocketConnect({ sessionId, socket, isReadonly: readonly })
 
 		socket.off('message', collectMessagesListener)
 
