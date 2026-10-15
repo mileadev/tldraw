@@ -18,6 +18,11 @@ input, textarea, select { width: 100%; }
 .job-list { display: flex; flex-direction: column; gap: 8px; }
 .job-list article { border: 1px solid #39465b; padding: 10px; border-radius: 7px; font-size: 12px; overflow-wrap: anywhere; }
 .job-list article p { color: #b4bfd0; } .job-list article a { color: #91c5ff; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pills button { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: #1a2334; color: #9ba9bf; }
+.pills button.on { border-color: #91c5ff; color: #91c5ff; background: #16233a; }
+.pin-row { display: flex; justify-content: flex-end; margin-top: 7px; }
+.pin-row button { font-size: 11px; padding: 3px 9px; }
 .welcome { max-width: 460px; margin: 12vh auto; padding: 24px; }
 .welcome form { display: grid; gap: 12px; margin-bottom: 15px; }
 .welcome .actions { margin: 25px 0; } [role=alert] { color: #ffb2b2; }
