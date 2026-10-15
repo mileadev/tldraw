@@ -6,6 +6,13 @@ type Board = { id: string; title: string; role: 'owner'|'editor'|'viewer' }
 type Finding = { title: string; summary: string; sources: { title: string; url: string }[] }
 type Job = { id: string; provider: string; prompt: string; status: string; parent_shape_id: string|null; result_json: string|null; error: string|null }
 type User = { id: string; username: string }
+type Provider = 'openai' | 'gemini' | 'mistral' | 'web'
+const ALL_PROVIDERS: { id: Provider; label: string }[] = [
+  { id: 'openai', label: 'OpenAI web' },
+  { id: 'gemini', label: 'Gemini web' },
+  { id: 'mistral', label: 'Mistral web' },
+  { id: 'web', label: 'All-web (Tavily)' },
+]
 const api = async (path: string, init?: RequestInit) => {
   const result = await fetch('/api/brainstorm/' + path, {
     credentials: 'same-origin',
@@ -24,7 +31,7 @@ function Canvas({ board }: { board: Board }) {
   const store = useSync({ uri: location.origin.replace(/^http/, 'ws') + '/connect/' + board.id, assets: inlineBase64AssetStore })
   const [editor, setEditor] = useState<Editor | null>(null)
   const [text, setText] = useState('')
-  const [provider, setProvider] = useState<'openai'|'gemini'|'mistral'>('openai')
+  const [active, setActive] = useState<Provider[]>(ALL_PROVIDERS.map(p => p.id))
   const [jobs, setJobs] = useState<Job[]>([])
   const [error, setError] = useState('')
   const [share, setShare] = useState('')
@@ -82,13 +89,16 @@ function Canvas({ board }: { board: Board }) {
   }, [jobs, editor, writable, autoPinned])
 
   async function research() {
-    if (!text.trim() || !writable) return
-    try {
-      setError('')
-      const selected = editor?.getSelectedShapeIds()[0] || null
-      await post('boards/' + board.id + '/research', { provider, prompt: text, parentShapeId: selected })
-      setText('')
-    } catch (e) { setError((e as Error).message) }
+    if (!text.trim() || !writable || !active.length) return
+    setError('')
+    const selected = editor?.getSelectedShapeIds()[0] || null
+    // One job per selected provider; they run in parallel on the worker side.
+    const results = await Promise.allSettled(active.map(provider =>
+      post('boards/' + board.id + '/research', { provider, prompt: text, parentShapeId: selected })))
+    const failed = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[]
+    if (failed.length === results.length) setError((failed[0].reason as Error)?.message || 'All research jobs failed to start')
+    else if (failed.length) setError(failed.length + ' of ' + results.length + ' research jobs failed to start')
+    else setText('')
   }
   async function invite(role: 'editor'|'viewer') {
     try {
@@ -102,19 +112,27 @@ function Canvas({ board }: { board: Board }) {
       <h2>{board.title}</h2><small>{board.role} · Live collaboration</small>
       <label>Brainstorm</label>
       <textarea disabled={!writable} value={text} onChange={e => setText(e.target.value)}
-        placeholder="Enter an idea, question, or research objective..." rows={5} />
+        onKeyDown={e => {
+          // Enter pins the idea (as a subnode of the selected shape, or as a root);
+          // Shift+Enter inserts a newline as usual.
+          if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing || !text.trim()) return
+          e.preventDefault()
+          addNode(text, editor?.getSelectedShapeIds()[0] || null)
+          setText('')
+        }}
+        placeholder="Enter an idea, question, or research objective... (Enter pins it; Shift+Enter for a new line)" rows={5} />
       <div className="actions">
         <button disabled={!writable || !text.trim()} onClick={() => { addNode(text, editor?.getSelectedShapeIds()[0]); setText('') }}>Pin node</button>
         <button disabled={!writable || !text.trim()} onClick={() => { addNode(text, null); setText('') }}>Pin root</button>
       </div>
-      <label>Deep research</label>
-      <select value={provider} onChange={e => setProvider(e.target.value as typeof provider)}>
-        <option value="openai">OpenAI web research</option>
-        <option value="gemini">Gemini grounded research</option>
-        <option value="mistral">Mistral (model knowledge)</option>
-      </select>
-      <button disabled={!writable || !text.trim()} onClick={research}>Launch research</button>
-      <small>Select an existing canvas shape first to attach a subnode. Double-click a node to edit its text.</small>
+      <label>Deep research providers</label>
+      <div className="pills">{ALL_PROVIDERS.map(p =>
+        <button key={p.id} disabled={!writable} className={active.includes(p.id) ? 'on' : ''}
+          onClick={() => setActive(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}>
+          {active.includes(p.id) ? '✓ ' : ''}{p.label}
+        </button>)}</div>
+      <button disabled={!writable || !text.trim() || !active.length} onClick={research}>Launch research ({active.length})</button>
+      <small>Select an existing canvas shape first to attach findings as subnodes. Double-click a node to edit its text.</small>
       {board.role === 'owner' && <>
         <label>Invite collaborators</label>
         <div className="actions">
@@ -133,6 +151,10 @@ function Canvas({ board }: { board: Board }) {
           {findings.map((f, index) => <details key={index}><summary>{f.title}</summary>
             <p>{f.summary}</p>
             {f.sources.map((s, n) => <div key={n}><a href={safeUrl(s.url)} rel="noopener noreferrer" target="_blank">{s.title}</a></div>)}
+            {writable && <div className="pin-row">
+              {/* Same stable ID as the auto-pin effect, so manual pinning never duplicates. */}
+              <button onClick={() => addNode(f.title + '\n' + f.summary.slice(0, 600), job.parent_shape_id as TLShapeId | null, toId('research_' + job.id.replaceAll('-', '_') + '_' + index))}>Pin as subnode</button>
+            </div>}
           </details>)}
         </article>
       })}</div>

@@ -4,7 +4,7 @@
 
 An additive brainstorming feature is implemented in this tldraw fork under the existing simple-server example. It is a **development preview**, not a production-ready deployment. It includes account registration/login, private boards, editor/viewer invitation links, a shared tldraw canvas, editable shape labels, brainstorming input, asynchronous provider research, research history and structured source links.
 
-Research providers are called through their APIs from a separately runnable worker process. **Mistral Vibe is a coding assistant, not an API-compatible web research endpoint**; the implementation uses the Mistral chat API as a model-only fallback, expressly not live-search grounded. OpenAI uses the Responses web_search tool. Gemini uses generateContent with google_search.
+Research providers are called through their APIs from a separately runnable worker process. **Mistral Vibe (the product) is a coding assistant and is not called**; the Mistral provider uses the Mistral Agents API with the built-in web_search connector, returning tool_reference citations from live web results. The all-web provider uses Tavily ranked search extracts directly, with no model synthesis and no fabricated citations. OpenAI uses the Responses web_search tool. Gemini uses generateContent with google_search.
 
 The existing demo server was changed to reject non-UUID legacy room IDs unless explicitly enabled with ALLOW_LEGACY_PUBLIC_ROOMS=true. Arbitrary uploads and URL unfurling are disabled to avoid unscoped assets and SSRF.
 
@@ -12,7 +12,7 @@ The existing demo server was changed to reject non-UUID legacy room IDs unless e
 
 - Node >= 22.12 and the repository's pinned pnpm from packageManager.
 - A writable local persistent directory for SQLite and tldraw room snapshots.
-- For cloud research, at least one provider credential; no credentials are bundled.
+- For cloud research, at least one provider credential; no credentials are bundled. The all-web provider needs a Tavily key.
 
 From repository root:
 
@@ -25,6 +25,7 @@ Run the web/API process, browser UI and worker. Set secrets in the service manag
     export OPENAI_API_KEY="<OpenAI-key>"
     export GEMINI_API_KEY="<Gemini-key>"
     export MISTRAL_API_KEY="<Mistral-key>"
+    export TAVILY_API_KEY="<Tavily-key>"
     pnpm --filter @tldraw/simple-server-example dev-brainstorm
 
 Open http://localhost:5757. API runs on 127.0.0.1:5858 (Vite proxies the /api/brainstorm and /connect routes); worker runs on port 5860. The service currently binds the worker to 0.0.0.0; put it inside a private network namespace/container or restrict it at the host firewall. No worker endpoint should be public. In production, route /api/brainstorm and /connect through a single TLS origin, and configure NODE_ENV=production for Secure cookies.
@@ -33,10 +34,10 @@ Open http://localhost:5757. API runs on 127.0.0.1:5858 (Vite proxies the /api/br
 
 1. Create a free local account (username: 3-32 allowed characters; password: 12-128).
 2. Create a private board.
-3. Enter brainstorming text and click Pin root or Pin node. Select a shape to attach a relative subnode.
+3. Enter brainstorming text and click Pin root or Pin node. Select a shape to attach a relative subnode. Pressing Enter pins the idea immediately (subnode of the selected shape, or a new root); Shift+Enter inserts a newline.
 4. Double-click shape labels to edit. Move and arrange nodes with the native canvas.
-5. Select OpenAI, Gemini, or Mistral and launch research; job statuses and findings appear in the sidebar.
-6. The client attempts to convert structured research findings into persistent nodes. Source URLs are preserved in the research panel; they are not independently verified.
+5. Select any combination of OpenAI, Gemini, Mistral, and all-web (Tavily) providers, then launch research; one job is created per selected provider and they run in parallel. Job statuses and findings appear in the sidebar.
+6. The client attempts to convert structured research findings into persistent nodes, and each finding also has a manual Pin as subnode button; both use the same stable shape ID, so pinning is idempotent across clients and repeated clicks. Source URLs are preserved in the research panel; they are not independently verified.
 7. Owner can create an expiring editor/viewer link; collaborator signs in and opens the link to join. Only invited members can access the board.
 
 ## Known limitations (do not claim complete)
