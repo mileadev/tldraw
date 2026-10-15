@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import {
   addJob, boardAccess, clearSession, createInvite, createSession, createUser, db,
-  extractSessionToken, getBoard, getJob, idPattern, jobsForBoard, listBoards, listInvites,
+  extractSessionToken, getBoard, idPattern, jobsForBoard, listBoards, listInvites,
   listMembers, makeBoard, redeemInvite, removeMember, resolveSession, revokeInvite,
   verifyLogin, COOKIE_NAME
 } from './brainstorm-db'
+import { closeBoardSockets } from './connections'
 import { enqueueResearch } from './brainstorm-research'
 
 const MAX_BODY = 16384
@@ -24,6 +25,7 @@ function cookie(value: string, clear = false) {
 const isObject = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x)
 const validId = (v: unknown) => typeof v === 'string' && idPattern.test(v)
 const isEditor = (role: string | null) => role === 'owner' || role === 'editor'
+const providers = ['openai', 'gemini', 'mistral', 'web']
 
 export function registerBrainstormRoutes(app: FastifyInstance) {
   app.addHook('onRequest', async (req, reply) => {
@@ -95,6 +97,8 @@ export function registerBrainstormRoutes(app: FastifyInstance) {
     if (!user || !validId(id) || !validId(userId) || boardAccess(user.id, id) !== 'owner')
       return reply.code(403).send({ error: 'Owner required' })
     removeMember(id, userId)
+    // Live revocation: drop the removed member's open collaboration sockets.
+    closeBoardSockets(id, userId)
     return { ok: true }
   })
   app.post('/api/brainstorm/boards/:id/invites', async (req, reply) => {
@@ -136,10 +140,10 @@ export function registerBrainstormRoutes(app: FastifyInstance) {
     if (!isObject(req.body)) return reply.code(400).send({ error: 'Invalid research payload' })
     const { prompt, provider, parentShapeId } = req.body
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 6000 ||
-      !['openai', 'gemini', 'mistral'].includes(String(provider)) ||
+      !providers.includes(String(provider)) ||
       !(parentShapeId == null || (typeof parentShapeId === 'string' && /^shape:[A-Za-z0-9_-]{1,128}$/.test(parentShapeId))))
       return reply.code(400).send({ error: 'Invalid research payload' })
-    const job = addJob(user.id, id, provider as 'openai' | 'gemini' | 'mistral', prompt, parentShapeId as string | null || null)
+    const job = addJob(user.id, id, provider as 'openai' | 'gemini' | 'mistral' | 'web', prompt, parentShapeId as string | null || null)
     enqueueResearch(job.id)
     return reply.code(202).send({ job })
   })

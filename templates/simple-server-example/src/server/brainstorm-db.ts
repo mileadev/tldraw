@@ -4,7 +4,9 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Role = 'owner' | 'editor' | 'viewer'
-export type Provider = 'openai' | 'gemini' | 'mistral'
+// 'web' is the direct all-web search provider (Tavily); the other providers are
+// LLM research agents with live web search/grounding.
+export type Provider = 'openai' | 'gemini' | 'mistral' | 'web'
 
 const dataDir = process.env.BRAINSTORM_DATA_DIR || join(process.cwd(), '.brainstorm-data')
 mkdirSync(dataDir, { recursive: true, mode: 0o700 })
