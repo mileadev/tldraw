@@ -3,6 +3,7 @@ import fastify from 'fastify'
 import type { RawData } from 'ws'
 import { registerBrainstormRoutes } from './brainstorm-api'
 import { boardAccess, idPattern, resolveSession } from './brainstorm-db'
+import { trackBoardSocket } from './connections'
 import { makeOrLoadRoom } from './rooms'
 
 const PORT = Number(process.env.PORT || 5858)
@@ -13,9 +14,9 @@ registerBrainstormRoutes(app)
 app.register(async app => {
   app.get('/connect/:roomId', { websocket: true }, async (socket, req) => {
     const roomId = (req.params as { roomId: string }).roomId
+    const user = idPattern.test(roomId) ? resolveSession(req.headers.cookie) : null
     let readonly = false
     if (idPattern.test(roomId)) {
-      const user = resolveSession(req.headers.cookie)
       const role = user && boardAccess(user.id, roomId)
       if (!role) {
         socket.close(1008, 'Board access denied')
@@ -32,6 +33,10 @@ app.register(async app => {
       socket.close(1008, 'Invalid session')
       return
     }
+
+    // Track the live socket so removing a board member closes it immediately.
+    const unregister = trackBoardSocket(socket, roomId, user?.id ?? null)
+    socket.on('close', unregister)
 
     // Preserve frames received while the room is being opened.
     const caughtMessages: RawData[] = []
