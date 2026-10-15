@@ -1,98 +1,69 @@
-import cors from '@fastify/cors'
 import websocketPlugin from '@fastify/websocket'
 import fastify from 'fastify'
 import type { RawData } from 'ws'
-import { loadAsset, storeAsset } from './assets'
-import { makeOrLoadRoom } from './rooms'
-import { unfurl } from './unfurl'
 import { registerBrainstormRoutes } from './brainstorm-api'
 import { boardAccess, idPattern, resolveSession } from './brainstorm-db'
+import { makeOrLoadRoom } from './rooms'
 
-const PORT = 5858
-
-// For this example we use a simple fastify server with the official websocket plugin
-// To keep things simple we're skipping normal production concerns like rate limiting and input validation.
+const PORT = Number(process.env.PORT || 5858)
 const app = fastify({ bodyLimit: 16384 })
-registerBrainstormRoutes(app)
 app.register(websocketPlugin)
-// Same-origin browser sessions: do not use wildcard CORS with credentials.
+registerBrainstormRoutes(app)
 
-app.register(async (app) => {
-	// This is the main entrypoint for the multiplayer sync
-	app.get('/connect/:roomId', { websocket: true }, async (socket, req) => {
-		// The roomId comes from the URL pathname
-		const roomId = (req.params as any).roomId as string
-		let readonly = false
-		if (idPattern.test(roomId)) {
-			const user = resolveSession(req.headers.cookie)
-			if (!user || !boardAccess(user.id, roomId)) {
-				socket.close(1008, 'Board access denied')
-				return
-			}
-			readonly = boardAccess(user.id, roomId) === 'viewer'
-		}
-		// The sessionId is passed from the client as a query param,
-		// you need to extract it and pass it to the room.
-		const sessionId = (req.query as any)?.['sessionId'] as string
+app.register(async app => {
+  app.get('/connect/:roomId', { websocket: true }, async (socket, req) => {
+    const roomId = (req.params as { roomId: string }).roomId
+    let readonly = false
+    if (idPattern.test(roomId)) {
+      const user = resolveSession(req.headers.cookie)
+      const role = user && boardAccess(user.id, roomId)
+      if (!role) {
+        socket.close(1008, 'Board access denied')
+        return
+      }
+      readonly = role === 'viewer'
+    } else if (process.env.ALLOW_LEGACY_PUBLIC_ROOMS !== 'true') {
+      socket.close(1008, 'Unknown board')
+      return
+    }
 
-		// At least one message handler needs to
-		// be attached before doing any kind of async work
-		// https://github.com/fastify/fastify-websocket?tab=readme-ov-file#attaching-event-handlers
-		// We collect messages that came in before the room was loaded, and re-emit them
-		// after the room is loaded.
-		const caughtMessages: RawData[] = []
+    const sessionId = (req.query as { sessionId?: string }).sessionId
+    if (typeof sessionId !== 'string' || sessionId.length > 128 || !sessionId) {
+      socket.close(1008, 'Invalid session')
+      return
+    }
 
-		const collectMessagesListener = (message: RawData) => {
-			caughtMessages.push(message)
-		}
+    // Preserve frames received while the room is being opened.
+    const caughtMessages: RawData[] = []
+    const collect = (message: RawData) => {
+      if (caughtMessages.length >= 100 || caughtMessages.reduce((n, v) => n + v.length, 0) > 1048576) {
+        socket.close(1009, 'Connection buffer exceeded')
+        return
+      }
+      caughtMessages.push(message)
+    }
+    socket.on('message', collect)
+    try {
+      const room = makeOrLoadRoom(roomId)
+      room.handleSocketConnect({ sessionId, socket, isReadonly: readonly })
+      socket.off('message', collect)
+      for (const message of caughtMessages) socket.emit('message', message)
+    } catch (error) {
+      req.log.error(error, 'Room connection failed')
+      socket.close(1011, 'Room error')
+    }
+  })
 
-		socket.on('message', collectMessagesListener)
-
-		// Here we make or get an existing instance of TLSocketRoom for the given roomId
-		const room = makeOrLoadRoom(roomId)
-		// and finally connect the socket to the room
-		room.handleSocketConnect({ sessionId, socket, isReadonly: readonly })
-
-		socket.off('message', collectMessagesListener)
-
-		// Finally, we replay any caught messages so the room can process them
-		for (const message of caughtMessages) {
-			socket.emit('message', message)
-		}
-	})
-
-	// To enable blob storage for assets, we add a simple endpoint supporting PUT and GET requests
-	// But first we need to allow all content types with no parsing, so we can handle raw data
-	app.addContentTypeParser('*', (_, __, done) => done(null))
-	app.put('/uploads/:id', {}, async (req, res) => {
-		// Uploaded assets are disabled until authenticated, board-scoped storage is implemented.
-		return res.code(403).send({ error: 'Uploads disabled' })
-		/*
-		const id = (req.params as any).id as string
-		await storeAsset(id, req.raw)
-		res.send({ ok: true }) */
-	})
-	app.get('/uploads/:id', async (req, res) => {
-		return res.code(403).send({ error: 'Uploads disabled' })
-		/* const id = (req.params as any).id as string
-		const data = await loadAsset(id)
-		// Prevent XSS from user-uploaded SVGs
-		res.header('Content-Security-Policy', "default-src 'none'")
-		res.header('X-Content-Type-Options', 'nosniff')
-		res.send(data) */
-	})
-
-	// To enable unfurling of bookmarks, we add a simple endpoint that takes a URL query param
-	app.get('/unfurl', async (req, res) => {
-		return res.code(403).send({ error: 'Unfurl disabled' })
-	})
+  // Reject unscoped uploads and remote URL unfurling until scoped asset storage exists.
+  app.put('/uploads/:id', async (_, reply) => reply.code(403).send({ error: 'Uploads disabled' }))
+  app.get('/uploads/:id', async (_, reply) => reply.code(403).send({ error: 'Uploads disabled' }))
+  app.get('/unfurl', async (_, reply) => reply.code(403).send({ error: 'Unfurling disabled' }))
 })
 
-app.listen({ port: PORT }, (err) => {
-	if (err) {
-		console.error(err)
-		process.exit(1)
-	}
-
-	console.log(`Server started on port ${PORT}`)
+app.listen({ host: process.env.HOST || '127.0.0.1', port: PORT }, err => {
+  if (err) {
+    console.error(err)
+    process.exit(1)
+  }
+  console.log('Brainstorm server listening on port ' + PORT)
 })
