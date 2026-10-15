@@ -41,7 +41,7 @@ Open http://localhost:5757. API runs on 127.0.0.1:5858 (Vite proxies the /api/br
 
 ## Known limitations (do not claim complete)
 
-- Static arrow connectors do not track moved nodes. Replace with actual tldraw arrow binding records and add hierarchy/tree layout logic.
+- Arrow connectors use tldraw arrow binding records and follow moved nodes. Automated hierarchical layout, collapse/expand and cycle detection are not yet implemented.
 - Research containers: separate worker process exists, but hardened per-provider containers, egress policies, API budgets, and real browser extraction are not implemented.
 - Provider result schema is best-effort: some responses will remain unstructured and must be reviewed.
 - Research results are first consumed/pinned by an editor's browser, not by an authoritative server-side document writer. Competing clients could race. Stable shape IDs reduce duplication but are not a full transactional guarantee.
