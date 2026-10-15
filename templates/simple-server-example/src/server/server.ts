@@ -5,20 +5,30 @@ import type { RawData } from 'ws'
 import { loadAsset, storeAsset } from './assets'
 import { makeOrLoadRoom } from './rooms'
 import { unfurl } from './unfurl'
+import { registerBrainstormRoutes } from './brainstorm-api'
+import { boardAccess, idPattern, resolveSession } from './brainstorm-db'
 
 const PORT = 5858
 
 // For this example we use a simple fastify server with the official websocket plugin
 // To keep things simple we're skipping normal production concerns like rate limiting and input validation.
-const app = fastify()
+const app = fastify({ bodyLimit: 16384 })
+registerBrainstormRoutes(app)
 app.register(websocketPlugin)
-app.register(cors, { origin: '*' })
+// Same-origin browser sessions: do not use wildcard CORS with credentials.
 
 app.register(async (app) => {
 	// This is the main entrypoint for the multiplayer sync
 	app.get('/connect/:roomId', { websocket: true }, async (socket, req) => {
 		// The roomId comes from the URL pathname
 		const roomId = (req.params as any).roomId as string
+		if (idPattern.test(roomId)) {
+			const user = resolveSession(req.headers.cookie)
+			if (!user || !['owner', 'editor'].includes(boardAccess(user.id, roomId) || '')) {
+				socket.close(1008, 'Board access denied')
+				return
+			}
+		}
 		// The sessionId is passed from the client as a query param,
 		// you need to extract it and pass it to the room.
 		const sessionId = (req.query as any)?.['sessionId'] as string
@@ -53,23 +63,26 @@ app.register(async (app) => {
 	// But first we need to allow all content types with no parsing, so we can handle raw data
 	app.addContentTypeParser('*', (_, __, done) => done(null))
 	app.put('/uploads/:id', {}, async (req, res) => {
+		// Uploaded assets are disabled until authenticated, board-scoped storage is implemented.
+		return res.code(403).send({ error: 'Uploads disabled' })
+		/*
 		const id = (req.params as any).id as string
 		await storeAsset(id, req.raw)
-		res.send({ ok: true })
+		res.send({ ok: true }) */
 	})
 	app.get('/uploads/:id', async (req, res) => {
-		const id = (req.params as any).id as string
+		return res.code(403).send({ error: 'Uploads disabled' })
+		/* const id = (req.params as any).id as string
 		const data = await loadAsset(id)
 		// Prevent XSS from user-uploaded SVGs
 		res.header('Content-Security-Policy', "default-src 'none'")
 		res.header('X-Content-Type-Options', 'nosniff')
-		res.send(data)
+		res.send(data) */
 	})
 
 	// To enable unfurling of bookmarks, we add a simple endpoint that takes a URL query param
 	app.get('/unfurl', async (req, res) => {
-		const url = (req.query as any).url as string
-		res.send(await unfurl(url))
+		return res.code(403).send({ error: 'Unfurl disabled' })
 	})
 })
 
