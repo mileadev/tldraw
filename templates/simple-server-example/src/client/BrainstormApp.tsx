@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSync } from '@tldraw/sync'
-import { createShapeId, Editor, TLShapeId, Tldraw, toRichText } from 'tldraw'
+import { createShapeId, Editor, TLShapeId, Tldraw, toRichText, inlineBase64AssetStore } from 'tldraw'
 
 type Board = { id: string; title: string; role: 'owner'|'editor'|'viewer' }
 type Finding = { title: string; summary: string; sources: { title: string; url: string }[] }
@@ -21,7 +21,7 @@ const toId = (s: string) => createShapeId(s)
 const safeUrl = (s: string) => { try { const u = new URL(s); return ['https:', 'http:'].includes(u.protocol) ? u.href : '#' } catch { return '#' } }
 
 function Canvas({ board }: { board: Board }) {
-  const store = useSync({ uri: location.origin.replace(/^http/, 'ws') + '/connect/' + board.id })
+  const store = useSync({ uri: location.origin.replace(/^http/, 'ws') + '/connect/' + board.id, assets: inlineBase64AssetStore })
   const [editor, setEditor] = useState<Editor | null>(null)
   const [text, setText] = useState('')
   const [provider, setProvider] = useState<'openai'|'gemini'|'mistral'>('openai')
