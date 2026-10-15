@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSync } from '@tldraw/sync'
-import { createShapeId, Editor, TLShapeId, Tldraw } from 'tldraw'
+import { createShapeId, Editor, TLShapeId, Tldraw, toRichText } from 'tldraw'
 
 type Board = { id: string; title: string; role: 'owner'|'editor'|'viewer' }
 type Finding = { title: string; summary: string; sources: { title: string; url: string }[] }
@@ -47,7 +47,7 @@ function Canvas({ board }: { board: Board }) {
     const anchor = parent ? editor.getShape(parent) : null
     const pos = anchor ? { x: anchor.x + 330, y: anchor.y + 80 + Math.random() * 80 } :
       { x: editor.getViewportPageBounds().center.x, y: editor.getViewportPageBounds().center.y }
-    editor.createShape({ id: shapeId, type: 'geo', x: pos.x, y: pos.y, props: { geo: 'rectangle', w: 260, h: 110, text: value.slice(0, 2000), align: 'middle', verticalAlign: 'middle' } })
+    editor.createShape({ id: shapeId, type: 'geo', x: pos.x, y: pos.y, props: { geo: 'rectangle', w: 260, h: 110, richText: toRichText(value.slice(0, 2000)), align: 'middle', verticalAlign: 'middle' } })
     if (anchor) {
       editor.createShape({ id: createShapeId(), type: 'arrow', x: anchor.x + 260, y: anchor.y + 55,
         props: { start: { x: 0, y: 0 }, end: { x: pos.x - anchor.x - 260, y: pos.y - anchor.y } } })
