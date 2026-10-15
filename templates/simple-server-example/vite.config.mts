@@ -8,6 +8,7 @@ export default defineConfig(() => ({
 	publicDir: path.join(__dirname, 'public'),
 	server: {
 		port: 5757,
+		proxy: { '/api/brainstorm': { target: 'http://localhost:5858', changeOrigin: true }, '/connect': { target: 'ws://localhost:5858', ws: true } },
 	},
 	optimizeDeps: {
 		exclude: ['@tldraw/assets'],

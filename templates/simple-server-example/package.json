@@ -17,7 +17,9 @@
 		"test": "pnpm exec vitest run --passWithNoTests",
 		"test-coverage": "pnpm exec vitest run --coverage --passWithNoTests",
 		"lint": "pnpm exec tsx ../../internal/scripts/lint.ts",
-		"build-types": "tsc"
+		"build-types": "tsc",
+		"dev-research-worker": "pnpm exec tsx watch ./src/server/research-worker.ts",
+		"dev-brainstorm": "concurrently -n server,client,worker -c red,blue,green \"pnpm dev-server\" \"pnpm dev-client\" \"pnpm dev-research-worker\""
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^7.6.12",
