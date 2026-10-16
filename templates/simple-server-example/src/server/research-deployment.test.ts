@@ -54,3 +54,9 @@ describe('Deployment contract', () => {
 		)
 	})
 })
+
+it('reserves distinct ingress addresses and prevents external DNS forwarding', () => {
+	expect(compose.services.api.networks.ingress.ipv4_address).toBe('172.31.240.3')
+	for (const name of ['api', 'ingress', ...PROVIDERS.map((p) => 'research-' + p)])
+		expect(compose.services[name].dns).toEqual(['127.0.0.1'])
+})

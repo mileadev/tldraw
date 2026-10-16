@@ -80,7 +80,7 @@ const noauth = await fetch('http://127.0.0.1:5860/research', {{method:'POST',hea
             node(service, """
 const net=require('node:net'), dns=require('node:dns/promises'), assert=require('node:assert/strict');
 async function denied(host,port) { await new Promise((resolve,reject)=>{const s=net.connect({host,port});s.setTimeout(1500);s.on('connect',()=>{s.destroy();reject(Error('direct egress allowed'))});s.on('timeout',()=>{s.destroy();resolve()});s.on('error',resolve)}); }
-(async()=>{await denied('1.1.1.1',443);await denied('169.254.169.254',80);await assert.rejects(dns.lookup('research-""" + ('gemini' if provider == 'openai' else 'openai') + """'));})().catch(()=>process.exit(1));
+(async()=>{await denied('1.1.1.1',443);await denied('169.254.169.254',80);await assert.rejects(dns.lookup('example.com'));await assert.rejects(dns.lookup('research-""" + ('gemini' if provider == 'openai' else 'openai') + """'));})().catch(()=>process.exit(1));
 """)
             node(service, f"""
 const http=require('node:http'),tls=require('node:tls'),assert=require('node:assert/strict');

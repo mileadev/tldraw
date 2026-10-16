@@ -43,13 +43,23 @@
 				"BRAINSTORM_TRUSTED_CLIENT_IP": "172.31.240.2"
 			},
 			"volumes": ["board-data:/data"],
-			"networks": ["openai", "gemini", "mistral", "web", "ingress"],
+			"networks": {
+				"openai": {},
+				"gemini": {},
+				"mistral": {},
+				"web": {},
+				"ingress": {
+					"ipv4_address": "172.31.240.3"
+				}
+			},
 			"secrets": [
 				"openai-worker-token",
 				"gemini-worker-token",
 				"mistral-worker-token",
 				"web-worker-token"
-			]
+			],
+			"dns": ["127.0.0.1"],
+			"dns_opt": ["timeout:1", "attempts:1"]
 		},
 		"research-openai": {
 			"user": "10001:10001",
@@ -102,7 +112,9 @@
 				"interval": "30s",
 				"timeout": "3s",
 				"retries": 3
-			}
+			},
+			"dns": ["127.0.0.1"],
+			"dns_opt": ["timeout:1", "attempts:1"]
 		},
 		"egress-openai": {
 			"user": "10001:10001",
@@ -187,7 +199,9 @@
 				"interval": "30s",
 				"timeout": "3s",
 				"retries": 3
-			}
+			},
+			"dns": ["127.0.0.1"],
+			"dns_opt": ["timeout:1", "attempts:1"]
 		},
 		"egress-gemini": {
 			"user": "10001:10001",
@@ -272,7 +286,9 @@
 				"interval": "30s",
 				"timeout": "3s",
 				"retries": 3
-			}
+			},
+			"dns": ["127.0.0.1"],
+			"dns_opt": ["timeout:1", "attempts:1"]
 		},
 		"egress-mistral": {
 			"user": "10001:10001",
@@ -357,7 +373,9 @@
 				"interval": "30s",
 				"timeout": "3s",
 				"retries": 3
-			}
+			},
+			"dns": ["127.0.0.1"],
+			"dns_opt": ["timeout:1", "attempts:1"]
 		},
 		"egress-web": {
 			"user": "10001:10001",
@@ -427,7 +445,9 @@
 			},
 			"ports": ["127.0.0.1:5858:8080"],
 			"depends_on": ["api"],
-			"volumes": ["./deploy/research/ingress.conf:/etc/nginx/nginx.conf:ro"]
+			"volumes": ["./deploy/research/ingress.conf:/etc/nginx/nginx.conf:ro"],
+			"dns": ["127.0.0.1"],
+			"dns_opt": ["timeout:1", "attempts:1"]
 		}
 	},
 	"networks": {
