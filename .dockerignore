@@ -62,3 +62,11 @@ packages/*/api
 apps/examples/www/index.css
 apps/examples/www/index.js
 .tsbuild
+
+# Never send runtime credentials or board content into the build context.
+**/.env*
+**/secrets
+**/.brainstorm-data
+**/.rooms
+**/*-api-key
+**/*-worker-token

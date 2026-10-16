@@ -130,3 +130,7 @@ todo.md
 # Yarn leftovers from before the pnpm switch
 yarn.lock
 .yarn/
+
+# Research runtime state and secret files
+.brainstorm-data/
+templates/simple-server-example/secrets/

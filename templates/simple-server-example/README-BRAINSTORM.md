@@ -2,68 +2,117 @@
 
 ## Status and scope
 
-An additive brainstorming feature is implemented in this tldraw fork under the existing simple-server example. It is a **development preview**, not a production-ready deployment. It includes account registration/login, private boards, editor/viewer invitation links, a shared tldraw canvas, editable shape labels, brainstorming input, asynchronous provider research, research history and structured source links.
+This example provides accounts, private boards, editor/viewer invitations, a shared editable tldraw canvas, mind-map pinning, and parallel API-based research using OpenAI, Gemini, Mistral, and Tavily. It remains a development preview: the container architecture is implemented, but production approval requires the deployment checks below. Consumer ChatGPT/Gemini/Vibe web UIs are not scraped.
 
-Research providers are called through their APIs from a separately runnable worker process. **Mistral Vibe (the product) is a coding assistant and is not called**; the Mistral provider uses the Mistral Agents API with the built-in web_search connector, returning tool_reference citations from live web results. The all-web provider uses Tavily ranked search extracts directly, with no model synthesis and no fabricated citations. OpenAI uses the Responses web_search tool. Gemini uses generateContent with google_search.
+The Compose deployment uses **one worker and one egress proxy per provider**. Every worker has a separate internal Docker network, one provider key, and a unique API-to-worker token. The API holds only worker tokens; workers have no board database or browser-session credentials. The frontend contains neither kind of credential. Missing provider endpoints disable research for that provider; invalid configuration fails startup. The former single-worker URL/shared-secret fallback is removed.
 
-The existing demo server was changed to reject non-UUID legacy room IDs unless explicitly enabled with ALLOW_LEGACY_PUBLIC_ROOMS=true. Arbitrary uploads and URL unfurling are disabled to avoid unscoped assets and SSRF.
+| Boundary          | Implemented control                                                                                                                                                                |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Execution         | UID/GID 10001, read-only root, all capabilities dropped, no-new-privileges, Docker default seccomp, no Docker socket, bounded noexec/nosuid/nodev tmpfs                            |
+| Worker networking | API ingress restricted to a dedicated proxy; one internal network per provider, no published worker/proxy ports, no direct Internet route; external DNS forwarding disabled        |
+| Egress            | One Squid proxy per provider; CONNECT only, port 443 only, exact provider API hostname only, private/reserved destination IP denial, default deny                                  |
+| Transport         | Explicit Undici ProxyAgent, TLS certificate verification, redirects rejected; no direct-network fallback                                                                           |
+| Secrets           | Read-only `/run/secrets` files, provider-specific API key and worker token; inline/foreign-provider secrets rejected                                                               |
+| Resource control  | Worker 256 MiB/0.5 CPU/64 PIDs; proxy 128 MiB/0.5 CPU/64 PIDs; API 512 MiB/1 CPU/64 PIDs; bounded logs/file descriptors                                                            |
+| Failure handling  | One job per provider worker; parallel providers, 64 pending jobs maximum, 105-second whole-job upstream deadline, bounded response bytes, generic errors, no error-body forwarding |
+| Board isolation   | Editor authorization at submission and dispatch; authorization rechecked before publishing results; revoked members lose HTTP and live socket access                               |
 
-## Local prerequisites
+API destinations are `api.openai.com`, `generativelanguage.googleapis.com`, `api.mistral.ai`, and `api.tavily.com`. Source links are returned as data; the worker does not fetch cited pages. The proxy is a trusted enforcement component with Internet connectivity; this is process/network separation, not a VM boundary. A kernel/container-runtime or proxy compromise is outside that boundary. All boards using one provider share its worker and provider account; no browser/cookie/conversation context is reused. OpenAI requests and Mistral conversations set `store: false`; Tavily answer synthesis is disabled.
 
-- Node >= 22.12 and the repository's pinned pnpm from packageManager.
-- A writable local persistent directory for SQLite and tldraw room snapshots.
-- For cloud research, at least one provider credential; no credentials are bundled. The all-web provider needs a Tavily key.
+Docker Compose secrets backed by local files are bind mounts, **not an encrypted secret store**. Protect the host and secret directory. For stronger tenant boundaries use separate deployments/provider accounts, or migrate this same worker protocol to Kubernetes with enforced default-deny NetworkPolicies and a managed secret store. Compose is the implemented OSS baseline; Kubernetes and managed isolation are not shipped by this change.
 
-From repository root:
+## Build and automated checks
 
-    corepack enable
-    pnpm install --frozen-lockfile
+Requires Node >=22.12 for development, the pinned pnpm from `packageManager`, Python 3 for Docker smoke tests, and Docker Engine with Compose v2 for deployment. Images use Node 24 LTS. Run from repository root:
 
-Run the web/API process, browser UI and worker. Set secrets in the service manager, secret store, or ephemeral shell environment; do not commit them.
+```sh
+corepack enable
+pnpm install --frozen-lockfile --filter @tldraw/simple-server-example... --ignore-scripts
+pnpm rebuild better-sqlite3 esbuild
+pnpm --filter @tldraw/simple-server-example test-ci
+pnpm typecheck --filter @tldraw/simple-server-example
+pnpm --filter @tldraw/simple-server-example build
+pnpm --filter @tldraw/simple-server-example build-server
+pnpm --filter @tldraw/simple-server-example build-worker
+pnpm lint-current
+node templates/simple-server-example/deploy/research/audit-research.mjs
+python3 templates/simple-server-example/deploy/research/smoke.py
+```
 
-    export RESEARCH_WORKER_SECRET="<random-32+-byte-secret>"
-    export OPENAI_API_KEY="<OpenAI-key>"
-    export GEMINI_API_KEY="<Gemini-key>"
-    export MISTRAL_API_KEY="<Mistral-key>"
-    export TAVILY_API_KEY="<Tavily-key>"
-    pnpm --filter @tldraw/simple-server-example dev-brainstorm
+Tests fail when no tests are discovered. The scoped audit fails on template dependency advisories or an unavailable/malformed audit response; it also reports repository-wide counts without treating unrelated packages as a template pass/fail decision. The root Vitest project includes this template. Tests cover provider selection/authentication, file-secret validation, cross-provider credentials, bounded responses, proxy denial, safe failures/timeouts, HTTP board access, expired/revoked invitations, real WebSocket viewer mutation rejection, editor-to-viewer collaboration, active-member revocation, and dispatch-time authorization checks. The Docker smoke test creates disposable fake credentials, builds/starts the deployment, inspects runtime controls, checks approved TLS destinations, rejects direct/lateral/metadata egress, checks secret mounts/read-only filesystems, stops a proxy and checks safe failure, then removes its own volumes. It never submits paid provider requests.
 
-Open http://localhost:5757. API runs on 127.0.0.1:5858 (Vite proxies the /api/brainstorm and /connect routes); worker runs on port 5860. The service currently binds the worker to 0.0.0.0; put it inside a private network namespace/container or restrict it at the host firewall. No worker endpoint should be public. In production, route /api/brainstorm and /connect through a single TLS origin, and configure NODE_ENV=production for Secure cookies.
+`.github/workflows/research-isolation.yml` runs these build/type/security/runtime checks without production secrets. A passing source-level configuration test alone is not evidence that Docker network controls work on your host. Run the Docker test on the actual target engine too. Browser node editing/pinning and live paid-provider outputs still require the acceptance session below.
 
-## Functionality
+## Secret provisioning and startup
 
-1. Create a free local account (username: 3-32 allowed characters; password: 12-128).
-2. Create a private board.
-3. Enter brainstorming text and click Pin root or Pin node. Select a shape to attach a relative subnode. Pressing Enter pins the idea immediately (subnode of the selected shape, or a new root); Shift+Enter inserts a newline.
-4. Double-click shape labels to edit. Move and arrange nodes with the native canvas.
-5. Select any combination of OpenAI, Gemini, Mistral, and all-web (Tavily) providers, then launch research; one job is created per selected provider and they run in parallel. Job statuses and findings appear in the sidebar.
-6. The client attempts to convert structured research findings into persistent nodes, and each finding also has a manual Pin as subnode button; both use the same stable shape ID, so pinning is idempotent across clients and repeated clicks. Source URLs are preserved in the research panel; they are not independently verified.
-7. Owner can create an expiring editor/viewer link; collaborator signs in and opens the link to join. Only invited members can access the board.
+Use a dedicated Linux Docker host. Before building, review/pin the resulting base/proxy image digests and scan images under your organization's policy; distro packages receive security updates at build time. Rebuild regularly, test, then roll forward by immutable image digest. Never use `seccomp=unconfined`, privileged mode, host networking, or publish a worker/proxy port.
 
-## Known limitations (do not claim complete)
+The API and workers run as numeric UID/GID 10001. File-backed Compose secrets preserve host file ownership; Compose `uid`/`gid`/`mode` remapping cannot be relied on for these files. Provision files through your secret manager or, on a local Linux host:
 
-- Arrow connectors use tldraw arrow binding records and follow moved nodes. Automated hierarchical layout, collapse/expand and cycle detection are not yet implemented.
-- Research containers: separate worker process exists, but hardened per-provider containers, egress policies, API budgets, and real browser extraction are not implemented.
-- Provider result schema is best-effort: some responses will remain unstructured and must be reviewed.
-- Research results are first consumed/pinned by an editor's browser, not by an authoritative server-side document writer. Competing clients could race. Stable shape IDs reduce duplication but are not a full transactional guarantee.
-- Existing open WebSocket sessions do not yet get forcibly disconnected when membership is revoked.
-- Existing SQLite tldraw rooms and brainstorm.sqlite are separate storage systems. Implement coordinated encrypted backups.
-- No account email verification, password-reset workflow, identity-provider integration, audit UI, billing, object-storage support, or tenant-specific provider restrictions.
-- No browser extraction of consumer ChatGPT/Gemini/Vibe web output; only supported API calls are used.
-- Worker process is not sandboxed by default. Containerize with read-only root, unprivileged user, seccomp, network egress allowlists and no docker socket.
-- Authentication only through local usernames/passwords; use SSO/OIDC and MFA for sensitive environments.
-- Local full dependency install, typecheck, test and E2E validation were unavailable when the feature branch was authored. Do not deploy without those checks.
+```sh
+export RESEARCH_SECRETS_DIR="$HOME/.config/tldraw-research-secrets"
+install -d -m 0700 "$RESEARCH_SECRETS_DIR"
+for provider in openai gemini mistral web; do
+  openssl rand -hex 32 > "$RESEARCH_SECRETS_DIR/$provider-worker-token"
+done
+# Place the corresponding real API key in each file with a secure editor/secret manager:
+# openai-api-key, gemini-api-key, mistral-api-key, web-api-key
+# Do not place credentials in command arguments, .env, the checkout, or the build context.
+sudo chown 10001:10001 "$RESEARCH_SECRETS_DIR/"*-worker-token "$RESEARCH_SECRETS_DIR/"*-api-key
+sudo chmod 0400 "$RESEARCH_SECRETS_DIR/"*-worker-token "$RESEARCH_SECRETS_DIR/"*-api-key
 
-## Required gates before production
+docker compose -f templates/simple-server-example/compose.research.json config --quiet
+docker compose -f templates/simple-server-example/compose.research.json up -d --build --wait
+pnpm --filter @tldraw/simple-server-example dev-client
+```
 
-    pnpm --filter @tldraw/simple-server-example build-types
-    pnpm --filter @tldraw/simple-server-example test
-    pnpm lint-current
+Provision all four provider files for the supplied four-provider stack. For a subset, remove the unused provider's worker/proxy services, networks, secret declarations, and API URL/token entry together; never map one provider to another provider's worker. Do not reuse worker tokens. Missing/short/unreadable secret files prevent worker startup.
 
-Security cases: uninvited user denied HTTP and WebSocket; viewer cannot mutate via forged WebSocket frames; revoked member denied new connection; expired invite fails; other user's jobs not exposed; CSRF blocked; malicious prompt output remains inert; worker credentials absent in browser bundle; failed provider never fabricates results; browser XSS/link protocol checks; session expiration; room and metadata DB recovery. Complete active-session revocation and file upload authorization before making it public.
+A dedicated ingress proxy connects a frontend bridge to the private API network and publishes **127.0.0.1:5858 only**. The API itself publishes no ports and accepts production requests only from the ingress proxy at 172.31.240.2, checked against the socket address rather than forwarded headers. The ingress uses its own internal 172.31.240.0/24 subnet; change that subnet, the proxy address, API address (172.31.240.3), and the API allowlisted address together if the subnet conflicts with your host routes. Provider containers cannot register accounts or dispatch work through the API. Vite serves the development UI at http://localhost:5757 and proxies API/WebSocket traffic while preserving Host for same-origin checks. Workers default to loopback when launched directly; Compose deliberately sets `HOST=0.0.0.0` inside the private network without publishing ports. `dev-brainstorm` starts only API/UI and does not launch an unsandboxed worker. With no endpoint mapping, the API still supports private/collaborative boards while research jobs fail as unconfigured.
+
+For deployment, serve `templates/simple-server-example/src/client/dist` through your TLS frontend and reverse proxy `/api/brainstorm/` and `/connect/` to the loopback API. Preserve the original Host header and WebSocket upgrades. The API runs with `NODE_ENV=production` for Secure/HttpOnly/SameSite=Strict session cookies. The Compose stack does not provision DNS, TLS, SSO, or an Internet-facing frontend.
+
+## Acceptance and operational checks
+
+1. Register an account; create two private boards. An unrelated account must not read either board, its jobs, or its WebSocket room.
+2. Invite editor and viewer accounts. Editors must pin/edit/move nodes and launch parallel research. Viewers must see live updates while HTTP research and forged canvas mutations remain denied.
+3. Launch one live research job with each configured provider; confirm actual cited findings, pin them, move/edit the nodes, and confirm the changes on another editor's browser. This requires valid paid-provider credentials, quotas, and approved egress. Model availability and grounding tools must be validated for your accounts.
+4. Revoke a member during collaboration/research. Its socket must close, reconnect must fail, and a revoked submitter's result must not publish. Jobs still visible to authorized board members remain board-scoped.
+5. Rotate each worker token/key by updating its file and recreating the affected worker plus API. Confirm denied access using the former token and successful new-token requests. Never echo tokens into logs.
+6. Check `docker compose ... ps`, worker `/health` inside the container, container resource usage, and generic job failures. No prompt, authorization header, provider key, or raw upstream exception is logged by the worker. Proxy access logging is disabled; container logs are capped. Add infrastructure metrics/auditing without recording credentials or research bodies.
+
+The Docker test requires a Docker daemon, bridge network/firewall support, image/package registry access, DNS, and outbound TLS to the provider APIs. Live-provider validation also requires real credentials and quota. Passing mocked provider tests cannot validate account-specific model/tool permissions.
+
+## Remaining limitations
+
+- No SSO/MFA, account recovery, email verification, per-tenant API budgets, or tenant-specific provider policy. Use an identity-aware frontend and separate deployments for sensitive tenants.
+- Automatic layout/collapse/cycle detection and browser extraction are not implemented.
+- Model outputs and citations are untrusted data. Results may remain unstructured; links are protocol-filtered but their factual accuracy is not independently verified.
+- Editors' browsers pin findings using stable shape IDs; this reduces duplicate pinning but is not a server-side transaction guarantee.
+- Authentication metadata and canvas rooms use separate SQLite databases. Coordinate encrypted backups of both, including WAL state. Durable cross-process job queues/retries are not implemented; interrupted jobs are marked interrupted on restart.
+- Arbitrary uploads/unfurling and legacy public rooms stay disabled by default. Do not enable legacy rooms for private deployments.
+- Shared-provider worker reuse does not provide per-job microVM isolation or per-tenant provider-account separation.
+- tldraw licensing requirements still apply to production use.
 
 ## Upgrade, rollback, cleanup
 
-This implementation is isolated to templates/simple-server-example and a new skill. Back out the feature branch or redeploy the previous commit if tests fail. Preserve .rooms and .brainstorm-data (including WAL files) across rollback. To reset a **development** deployment only, stop all services and delete those directories after confirming backups and ownership.
+Back up the `board-data` volume with all writers stopped before rollout. Rebuild/test images, record their digests, and deploy the reviewed revision. Roll back the application images/configuration together while keeping the existing data volume; this change adds no database migration. Do not restore the former shared-worker/unsandboxed setup as a rollback shortcut: disable research by removing endpoint mappings instead. Rotate secrets if exposure is suspected.
 
-The repository's tldraw license forbids production deployment without the appropriate license/key. A free-to-users service still needs correct tldraw licensing.
+`docker compose -f templates/simple-server-example/compose.research.json down` stops the deployment without deleting board data. `down --volumes` is destructive and is only appropriate for disposable test environments after backups are verified. The smoke test uses its own project/volume and cleans those up automatically.
+
+References: [Docker service controls](https://docs.docker.com/reference/compose-file/services/), [Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/), [Squid access policy](https://www.squid-cache.org/Doc/config/http_access/), [Undici ProxyAgent](https://undici.nodejs.org/#/docs/api/ProxyAgent).
+
+## Verification record (2026-10-16)
+
+- 68 automated security/collaboration tests pass across seven files, including real HTTP disconnect cancellation and WebSocket access controls.
+- Targeted `pnpm typecheck --filter @tldraw/simple-server-example` passes for the template and its workspace dependencies. The local runner denies tsx CLI Unix IPC, so the asset-refresh subprocess used the equivalent `node --import tsx` loader; no repository source workaround was needed.
+- Browser, API, and fully bundled worker builds pass. Both bundled Node entrypoints start and enforce their expected HTTP authorization boundaries. Credential-marker scanning of the built frontend passes.
+- Targeted oxlint and explicit changed-file formatting checks pass. The repository's existing lint-current formatter passes its file list as a single argument, so formatting was additionally checked with each path as a separate argument.
+- The scoped production-dependency audit reports zero template advisories after updating Fastify to 5.12.5, Undici to 7.29.1, fast-uri to 3.1.8, patching affected build-tool transitive dependencies, and removing the unused React Router dependency. The repository-wide audit still reports unrelated findings (7 critical, 43 high, 54 moderate, 14 low); this work does not claim to remediate those packages or establish their exploitability.
+- Native nginx 1.24 and Squid 6.14 parsers accept the proxy configurations. Squid distribution asset paths were adjusted only in temporary verification copies. These parser checks do not substitute for the shipped Debian image/runtime tests.
+- Docker smoke execution is blocked locally because the Docker CLI/daemon is unavailable. The dedicated GitHub Actions workflow includes image build, proxy configuration parsing, actual runtime isolation checks, and proxy failure handling. Its result must be checked before production approval.
+- Live paid-provider calls, account-specific model/grounding permissions, TLS frontend deployment, and browser canvas acceptance remain credential/infrastructure-dependent checks; none is claimed as completed here.
+
+The first GitHub Docker run successfully built every image and parsed all proxy configurations, then caught an ingress address allocation collision before runtime assertions. Both API/ingress addresses are now reserved explicitly. Worker/API/ingress external DNS forwarding is also disabled while Docker service-name resolution remains available; the Docker smoke test checks external DNS denial.
+
+The Docker gate also checks the published host listener rather than assuming a running container means a working deployment. Ingress has a separate frontend bridge for published-port connectivity; API/provider networks remain internal. Every service now has a listener health probe, and failed disposable Docker checks print bounded diagnostic logs before cleanup.

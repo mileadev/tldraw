@@ -4,7 +4,7 @@ import { NodeSqliteWrapper, SQLiteSyncStorage, TLSocketRoom } from '@tldraw/sync
 import Database from 'better-sqlite3'
 
 // For this example we're saving data to a SQLite database on the local filesystem
-const DIR = './.rooms'
+const DIR = process.env.BRAINSTORM_ROOMS_DIR || './.rooms'
 mkdirSync(DIR, { recursive: true })
 
 // Sanitize roomId to prevent path traversal attacks

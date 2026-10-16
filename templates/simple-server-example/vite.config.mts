@@ -1,5 +1,5 @@
-import react from '@vitejs/plugin-react'
 import path from 'path'
+import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 export default defineConfig(() => ({
@@ -8,7 +8,10 @@ export default defineConfig(() => ({
 	publicDir: path.join(__dirname, 'public'),
 	server: {
 		port: 5757,
-		proxy: { '/api/brainstorm': { target: 'http://localhost:5858', changeOrigin: true }, '/connect': { target: 'ws://localhost:5858', ws: true } },
+		proxy: {
+			'/api/brainstorm': { target: 'http://127.0.0.1:5858', changeOrigin: false },
+			'/connect': { target: 'ws://127.0.0.1:5858', ws: true },
+		},
 	},
 	optimizeDeps: {
 		exclude: ['@tldraw/assets'],
