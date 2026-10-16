@@ -12,14 +12,18 @@
 	"scripts": {
 		"dev": "concurrently -n server,client -c red,blue \"npm run dev-server\" \"npm run dev-client\"",
 		"dev-server": "pnpm exec tsx watch ./src/server/server.ts",
-		"dev-client": "vite dev --host",
-		"test-ci": "echo 'No tests yet'",
-		"test": "pnpm exec vitest run --passWithNoTests",
-		"test-coverage": "pnpm exec vitest run --coverage --passWithNoTests",
+		"dev-client": "vite dev --host 127.0.0.1",
+		"test-ci": "pnpm exec vitest run --config vitest.config.ts",
+		"test": "pnpm exec vitest --config vitest.config.ts",
+		"test-coverage": "pnpm exec vitest run --config vitest.config.ts --coverage",
 		"lint": "pnpm exec tsx ../../internal/scripts/lint.ts",
 		"build-types": "tsc",
 		"dev-research-worker": "pnpm exec tsx watch ./src/server/research-worker.ts",
-		"dev-brainstorm": "concurrently -n server,client,worker -c red,blue,green \"pnpm dev-server\" \"pnpm dev-client\" \"pnpm dev-research-worker\""
+		"dev-brainstorm": "concurrently -n server,client -c red,blue \"pnpm dev-server\" \"pnpm dev-client\"",
+		"test-security": "pnpm exec vitest run --config vitest.config.ts",
+		"build": "vite build",
+		"build-server": "pnpm exec esbuild src/server/server.ts --bundle --platform=node --format=cjs --external:better-sqlite3 --outfile=dist/server.cjs",
+		"build-worker": "pnpm exec esbuild src/server/research-worker.ts --bundle --platform=node --format=cjs --outfile=dist/research-worker.cjs"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^7.6.12",
@@ -29,7 +33,8 @@
 		"@types/ws": "^8.18.1",
 		"concurrently": "^9.1.2",
 		"tsx": "^4.19.2",
-		"typescript": "^5.8.3"
+		"typescript": "^5.8.3",
+		"vitest": "^5.0.0"
 	},
 	"dependencies": {
 		"@fastify/cors": "^10.0.0",
@@ -38,12 +43,12 @@
 		"@tldraw/sync-core": "workspace:*",
 		"@vitejs/plugin-react": "^6.0.1",
 		"better-sqlite3": "^12.10.0",
-		"fastify": "^5.8.1",
+		"fastify": "^5.12.5",
 		"itty-router": "^5.0.18",
 		"react": "^19.2.1",
 		"react-dom": "^19.2.1",
-		"react-router-dom": "^6.28.2",
 		"tldraw": "workspace:*",
+		"undici": "7.29.1",
 		"unfurl.js": "^6.4.0",
 		"vite": "^8.0.16",
 		"ws": "^8.18.0"

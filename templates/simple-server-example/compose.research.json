@@ -1,0 +1,490 @@
+{
+	"name": "tldraw-research",
+	"services": {
+		"api": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 1,
+			"mem_limit": "512m",
+			"memswap_limit": "512m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "../..",
+				"dockerfile": "templates/simple-server-example/deploy/research/Dockerfile",
+				"target": "api"
+			},
+			"environment": {
+				"NODE_ENV": "production",
+				"HOST": "0.0.0.0",
+				"BRAINSTORM_DATA_DIR": "/data/metadata",
+				"RESEARCH_WORKER_URLS": "{\"openai\": \"http://research-openai:5860\", \"gemini\": \"http://research-gemini:5860\", \"mistral\": \"http://research-mistral:5860\", \"web\": \"http://research-web:5860\"}",
+				"RESEARCH_OPENAI_SECRET_FILE": "/run/secrets/openai-worker-token",
+				"RESEARCH_GEMINI_SECRET_FILE": "/run/secrets/gemini-worker-token",
+				"RESEARCH_MISTRAL_SECRET_FILE": "/run/secrets/mistral-worker-token",
+				"RESEARCH_WEB_SECRET_FILE": "/run/secrets/web-worker-token",
+				"BRAINSTORM_TRUSTED_CLIENT_IP": "172.31.240.2"
+			},
+			"volumes": ["board-data:/data"],
+			"networks": ["openai", "gemini", "mistral", "web", "ingress"],
+			"secrets": [
+				"openai-worker-token",
+				"gemini-worker-token",
+				"mistral-worker-token",
+				"web-worker-token"
+			]
+		},
+		"research-openai": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "256m",
+			"memswap_limit": "256m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "../..",
+				"dockerfile": "templates/simple-server-example/deploy/research/Dockerfile",
+				"target": "worker"
+			},
+			"environment": {
+				"NODE_ENV": "production",
+				"HOST": "0.0.0.0",
+				"PROVIDER": "openai",
+				"RESEARCH_WORKER_SECRET_FILE": "/run/secrets/openai-worker-token",
+				"OPENAI_API_KEY_FILE": "/run/secrets/openai-api-key",
+				"RESEARCH_EGRESS_PROXY": "http://egress-openai:3128"
+			},
+			"secrets": ["openai-worker-token", "openai-api-key"],
+			"networks": ["openai"],
+			"depends_on": ["egress-openai"],
+			"healthcheck": {
+				"test": [
+					"CMD",
+					"node",
+					"-e",
+					"fetch('http://127.0.0.1:5860/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+				],
+				"interval": "30s",
+				"timeout": "3s",
+				"retries": 3
+			}
+		},
+		"egress-openai": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "128m",
+			"memswap_limit": "128m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "deploy/research",
+				"dockerfile": "Dockerfile.egress"
+			},
+			"networks": ["openai", "openai-egress"],
+			"volumes": ["./deploy/research/openai.squid.conf:/etc/squid/squid.conf:ro"]
+		},
+		"research-gemini": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "256m",
+			"memswap_limit": "256m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "../..",
+				"dockerfile": "templates/simple-server-example/deploy/research/Dockerfile",
+				"target": "worker"
+			},
+			"environment": {
+				"NODE_ENV": "production",
+				"HOST": "0.0.0.0",
+				"PROVIDER": "gemini",
+				"RESEARCH_WORKER_SECRET_FILE": "/run/secrets/gemini-worker-token",
+				"GEMINI_API_KEY_FILE": "/run/secrets/gemini-api-key",
+				"RESEARCH_EGRESS_PROXY": "http://egress-gemini:3128"
+			},
+			"secrets": ["gemini-worker-token", "gemini-api-key"],
+			"networks": ["gemini"],
+			"depends_on": ["egress-gemini"],
+			"healthcheck": {
+				"test": [
+					"CMD",
+					"node",
+					"-e",
+					"fetch('http://127.0.0.1:5860/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+				],
+				"interval": "30s",
+				"timeout": "3s",
+				"retries": 3
+			}
+		},
+		"egress-gemini": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "128m",
+			"memswap_limit": "128m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "deploy/research",
+				"dockerfile": "Dockerfile.egress"
+			},
+			"networks": ["gemini", "gemini-egress"],
+			"volumes": ["./deploy/research/gemini.squid.conf:/etc/squid/squid.conf:ro"]
+		},
+		"research-mistral": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "256m",
+			"memswap_limit": "256m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "../..",
+				"dockerfile": "templates/simple-server-example/deploy/research/Dockerfile",
+				"target": "worker"
+			},
+			"environment": {
+				"NODE_ENV": "production",
+				"HOST": "0.0.0.0",
+				"PROVIDER": "mistral",
+				"RESEARCH_WORKER_SECRET_FILE": "/run/secrets/mistral-worker-token",
+				"MISTRAL_API_KEY_FILE": "/run/secrets/mistral-api-key",
+				"RESEARCH_EGRESS_PROXY": "http://egress-mistral:3128"
+			},
+			"secrets": ["mistral-worker-token", "mistral-api-key"],
+			"networks": ["mistral"],
+			"depends_on": ["egress-mistral"],
+			"healthcheck": {
+				"test": [
+					"CMD",
+					"node",
+					"-e",
+					"fetch('http://127.0.0.1:5860/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+				],
+				"interval": "30s",
+				"timeout": "3s",
+				"retries": 3
+			}
+		},
+		"egress-mistral": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "128m",
+			"memswap_limit": "128m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "deploy/research",
+				"dockerfile": "Dockerfile.egress"
+			},
+			"networks": ["mistral", "mistral-egress"],
+			"volumes": ["./deploy/research/mistral.squid.conf:/etc/squid/squid.conf:ro"]
+		},
+		"research-web": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "256m",
+			"memswap_limit": "256m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "../..",
+				"dockerfile": "templates/simple-server-example/deploy/research/Dockerfile",
+				"target": "worker"
+			},
+			"environment": {
+				"NODE_ENV": "production",
+				"HOST": "0.0.0.0",
+				"PROVIDER": "web",
+				"RESEARCH_WORKER_SECRET_FILE": "/run/secrets/web-worker-token",
+				"TAVILY_API_KEY_FILE": "/run/secrets/web-api-key",
+				"RESEARCH_EGRESS_PROXY": "http://egress-web:3128"
+			},
+			"secrets": ["web-worker-token", "web-api-key"],
+			"networks": ["web"],
+			"depends_on": ["egress-web"],
+			"healthcheck": {
+				"test": [
+					"CMD",
+					"node",
+					"-e",
+					"fetch('http://127.0.0.1:5860/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+				],
+				"interval": "30s",
+				"timeout": "3s",
+				"retries": 3
+			}
+		},
+		"egress-web": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "128m",
+			"memswap_limit": "128m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "deploy/research",
+				"dockerfile": "Dockerfile.egress"
+			},
+			"networks": ["web", "web-egress"],
+			"volumes": ["./deploy/research/web.squid.conf:/etc/squid/squid.conf:ro"]
+		},
+		"ingress": {
+			"user": "10001:10001",
+			"read_only": true,
+			"cap_drop": ["ALL"],
+			"security_opt": ["no-new-privileges:true"],
+			"init": true,
+			"pids_limit": 64,
+			"cpus": 0.5,
+			"mem_limit": "128m",
+			"memswap_limit": "128m",
+			"tmpfs": ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700"],
+			"restart": "unless-stopped",
+			"ulimits": {
+				"nofile": {
+					"soft": 1024,
+					"hard": 1024
+				}
+			},
+			"logging": {
+				"driver": "local",
+				"options": {
+					"max-size": "5m",
+					"max-file": "2"
+				}
+			},
+			"build": {
+				"context": "deploy/research",
+				"dockerfile": "Dockerfile.ingress"
+			},
+			"networks": {
+				"ingress": {
+					"ipv4_address": "172.31.240.2"
+				}
+			},
+			"ports": ["127.0.0.1:5858:8080"],
+			"depends_on": ["api"],
+			"volumes": ["./deploy/research/ingress.conf:/etc/nginx/nginx.conf:ro"]
+		}
+	},
+	"networks": {
+		"openai": {
+			"internal": true
+		},
+		"openai-egress": {},
+		"gemini": {
+			"internal": true
+		},
+		"gemini-egress": {},
+		"mistral": {
+			"internal": true
+		},
+		"mistral-egress": {},
+		"web": {
+			"internal": true
+		},
+		"web-egress": {},
+		"ingress": {
+			"internal": true,
+			"ipam": {
+				"config": [
+					{
+						"subnet": "172.31.240.0/24"
+					}
+				]
+			}
+		}
+	},
+	"secrets": {
+		"openai-worker-token": {
+			"file": "${RESEARCH_SECRETS_DIR:?Set RESEARCH_SECRETS_DIR}/openai-worker-token"
+		},
+		"openai-api-key": {
+			"file": "${RESEARCH_SECRETS_DIR:?Set RESEARCH_SECRETS_DIR}/openai-api-key"
+		},
+		"gemini-worker-token": {
+			"file": "${RESEARCH_SECRETS_DIR:?Set RESEARCH_SECRETS_DIR}/gemini-worker-token"
+		},
+		"gemini-api-key": {
+			"file": "${RESEARCH_SECRETS_DIR:?Set RESEARCH_SECRETS_DIR}/gemini-api-key"
+		},
+		"mistral-worker-token": {
+			"file": "${RESEARCH_SECRETS_DIR:?Set RESEARCH_SECRETS_DIR}/mistral-worker-token"
+		},
+		"mistral-api-key": {
+			"file": "${RESEARCH_SECRETS_DIR:?Set RESEARCH_SECRETS_DIR}/mistral-api-key"
+		},
+		"web-worker-token": {
+			"file": "${RESEARCH_SECRETS_DIR:?Set RESEARCH_SECRETS_DIR}/web-worker-token"
+		},
+		"web-api-key": {
+			"file": "${RESEARCH_SECRETS_DIR:?Set RESEARCH_SECRETS_DIR}/web-api-key"
+		}
+	},
+	"volumes": {
+		"board-data": {}
+	}
+}

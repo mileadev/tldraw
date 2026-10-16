@@ -1,0 +1,41 @@
+name: Research isolation
+on:
+  pull_request:
+    paths:
+      - 'templates/simple-server-example/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/research-isolation.yml'
+      - '.dockerignore'
+  push:
+    branches: [main]
+    paths:
+      - 'templates/simple-server-example/**'
+permissions:
+  contents: read
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.19.0'
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --filter @tldraw/simple-server-example... --ignore-scripts
+      - run: pnpm rebuild better-sqlite3 esbuild
+      - run: pnpm exec oxlint templates/simple-server-example/src/server/research*.ts templates/simple-server-example/src/server/*.test.ts templates/simple-server-example/src/server/brainstorm-{db,research}.ts templates/simple-server-example/src/server/server{,-app}.ts
+      - run: node templates/simple-server-example/deploy/research/audit-research.mjs
+      - run: pnpm --filter @tldraw/simple-server-example test-ci
+      - run: pnpm typecheck --filter @tldraw/simple-server-example
+      - run: pnpm --filter @tldraw/simple-server-example build
+        env:
+          OPENAI_API_KEY: BUILD_LEAK_SENTINEL_OPENAI
+          GEMINI_API_KEY: BUILD_LEAK_SENTINEL_GEMINI
+          MISTRAL_API_KEY: BUILD_LEAK_SENTINEL_MISTRAL
+          TAVILY_API_KEY: BUILD_LEAK_SENTINEL_TAVILY
+          RESEARCH_WORKER_SECRET: BUILD_LEAK_SENTINEL_WORKER
+      - run: node templates/simple-server-example/deploy/research/check-browser-secrets.mjs
+      - run: pnpm --filter @tldraw/simple-server-example build-server
+      - run: pnpm --filter @tldraw/simple-server-example build-worker
+      - run: python3 templates/simple-server-example/deploy/research/smoke.py
