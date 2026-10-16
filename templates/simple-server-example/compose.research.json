@@ -59,7 +59,19 @@
 				"web-worker-token"
 			],
 			"dns": ["127.0.0.1"],
-			"dns_opt": ["timeout:1", "attempts:1"]
+			"dns_opt": ["timeout:1", "attempts:1"],
+			"healthcheck": {
+				"test": [
+					"CMD",
+					"node",
+					"-e",
+					"fetch('http://127.0.0.1:5858/api/brainstorm/me').then(r=>{if(r.status!==403)process.exit(1)}).catch(()=>process.exit(1))"
+				],
+				"interval": "5s",
+				"timeout": "3s",
+				"retries": 10,
+				"start_period": "5s"
+			}
 		},
 		"research-openai": {
 			"user": "10001:10001",
@@ -109,9 +121,10 @@
 					"-e",
 					"fetch('http://127.0.0.1:5860/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 				],
-				"interval": "30s",
+				"interval": "5s",
 				"timeout": "3s",
-				"retries": 3
+				"retries": 10,
+				"start_period": "5s"
 			},
 			"dns": ["127.0.0.1"],
 			"dns_opt": ["timeout:1", "attempts:1"]
@@ -146,7 +159,14 @@
 				"dockerfile": "Dockerfile.egress"
 			},
 			"networks": ["openai", "openai-egress"],
-			"volumes": ["./deploy/research/openai.squid.conf:/etc/squid/squid.conf:ro"]
+			"volumes": ["./deploy/research/openai.squid.conf:/etc/squid/squid.conf:ro"],
+			"healthcheck": {
+				"test": ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/3128"],
+				"interval": "5s",
+				"timeout": "3s",
+				"retries": 10,
+				"start_period": "5s"
+			}
 		},
 		"research-gemini": {
 			"user": "10001:10001",
@@ -196,9 +216,10 @@
 					"-e",
 					"fetch('http://127.0.0.1:5860/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 				],
-				"interval": "30s",
+				"interval": "5s",
 				"timeout": "3s",
-				"retries": 3
+				"retries": 10,
+				"start_period": "5s"
 			},
 			"dns": ["127.0.0.1"],
 			"dns_opt": ["timeout:1", "attempts:1"]
@@ -233,7 +254,14 @@
 				"dockerfile": "Dockerfile.egress"
 			},
 			"networks": ["gemini", "gemini-egress"],
-			"volumes": ["./deploy/research/gemini.squid.conf:/etc/squid/squid.conf:ro"]
+			"volumes": ["./deploy/research/gemini.squid.conf:/etc/squid/squid.conf:ro"],
+			"healthcheck": {
+				"test": ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/3128"],
+				"interval": "5s",
+				"timeout": "3s",
+				"retries": 10,
+				"start_period": "5s"
+			}
 		},
 		"research-mistral": {
 			"user": "10001:10001",
@@ -283,9 +311,10 @@
 					"-e",
 					"fetch('http://127.0.0.1:5860/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 				],
-				"interval": "30s",
+				"interval": "5s",
 				"timeout": "3s",
-				"retries": 3
+				"retries": 10,
+				"start_period": "5s"
 			},
 			"dns": ["127.0.0.1"],
 			"dns_opt": ["timeout:1", "attempts:1"]
@@ -320,7 +349,14 @@
 				"dockerfile": "Dockerfile.egress"
 			},
 			"networks": ["mistral", "mistral-egress"],
-			"volumes": ["./deploy/research/mistral.squid.conf:/etc/squid/squid.conf:ro"]
+			"volumes": ["./deploy/research/mistral.squid.conf:/etc/squid/squid.conf:ro"],
+			"healthcheck": {
+				"test": ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/3128"],
+				"interval": "5s",
+				"timeout": "3s",
+				"retries": 10,
+				"start_period": "5s"
+			}
 		},
 		"research-web": {
 			"user": "10001:10001",
@@ -370,9 +406,10 @@
 					"-e",
 					"fetch('http://127.0.0.1:5860/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 				],
-				"interval": "30s",
+				"interval": "5s",
 				"timeout": "3s",
-				"retries": 3
+				"retries": 10,
+				"start_period": "5s"
 			},
 			"dns": ["127.0.0.1"],
 			"dns_opt": ["timeout:1", "attempts:1"]
@@ -407,7 +444,14 @@
 				"dockerfile": "Dockerfile.egress"
 			},
 			"networks": ["web", "web-egress"],
-			"volumes": ["./deploy/research/web.squid.conf:/etc/squid/squid.conf:ro"]
+			"volumes": ["./deploy/research/web.squid.conf:/etc/squid/squid.conf:ro"],
+			"healthcheck": {
+				"test": ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/3128"],
+				"interval": "5s",
+				"timeout": "3s",
+				"retries": 10,
+				"start_period": "5s"
+			}
 		},
 		"ingress": {
 			"user": "10001:10001",
@@ -441,13 +485,21 @@
 			"networks": {
 				"ingress": {
 					"ipv4_address": "172.31.240.2"
-				}
+				},
+				"frontend": {}
 			},
 			"ports": ["127.0.0.1:5858:8080"],
 			"depends_on": ["api"],
 			"volumes": ["./deploy/research/ingress.conf:/etc/nginx/nginx.conf:ro"],
 			"dns": ["127.0.0.1"],
-			"dns_opt": ["timeout:1", "attempts:1"]
+			"dns_opt": ["timeout:1", "attempts:1"],
+			"healthcheck": {
+				"test": ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8080"],
+				"interval": "5s",
+				"timeout": "3s",
+				"retries": 10,
+				"start_period": "5s"
+			}
 		}
 	},
 	"networks": {
@@ -476,7 +528,8 @@
 					}
 				]
 			}
-		}
+		},
+		"frontend": {}
 	},
 	"secrets": {
 		"openai-worker-token": {

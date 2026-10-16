@@ -60,3 +60,11 @@ it('reserves distinct ingress addresses and prevents external DNS forwarding', (
 	for (const name of ['api', 'ingress', ...PROVIDERS.map((p) => 'research-' + p)])
 		expect(compose.services[name].dns).toEqual(['127.0.0.1'])
 })
+
+it('gives only ingress a published frontend bridge and probes every listener', () => {
+	expect(compose.services.ingress.networks.frontend).toEqual({})
+	for (const [name, service] of Object.entries(compose.services) as [string, any][]) {
+		expect(service.healthcheck.test.length).toBeGreaterThan(0)
+		if (name !== 'ingress') expect(JSON.stringify(service.networks)).not.toContain('frontend')
+	}
+})

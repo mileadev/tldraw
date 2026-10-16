@@ -100,5 +100,9 @@ const token=fs.readFileSync('/run/secrets/openai-worker-token','utf8').trim();
 (async()=>{const r=await fetch('http://localhost:5860/research',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({provider:'openai',prompt:'test',system:'test'}),signal:AbortSignal.timeout(115000)});assert.equal(r.status,502);assert.deepEqual(await r.json(),{error:'Provider request failed'});})().catch(()=>process.exit(1));
 """)
         print('PASS: filesystem, identity, secrets, resources, direct/lateral egress, proxy allow/deny, and proxy outage')
+    except Exception:
+        run('ps', '-a')
+        run('logs', '--no-color', '--tail', '60')
+        raise
     finally:
         subprocess.run([*COMPOSE, 'down', '--volumes', '--remove-orphans'], check=False)
